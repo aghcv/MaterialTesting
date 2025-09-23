@@ -295,7 +295,8 @@ def main(fits, outdir, regions):
             df_region = pickle.load(f)
 
         # Build feature matrix
-        features = ["Severity", "Duration", "Weight", "Sex"]
+        #features = ["Severity", "Duration", "Weight", "Sex"]
+        features = ["Severity", "Duration"]
 
         # ---------------------------------------------------
         # 1) Run ML for constitutive parameters

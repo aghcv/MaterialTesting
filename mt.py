@@ -10,6 +10,8 @@ import matplotlib.pyplot as plt
 from scipy.optimize import minimize, differential_evolution, approx_fprime
 from scipy.stats import f_oneway
 from statsmodels.stats.multicomp import pairwise_tukeyhsd
+from sklearn.metrics import r2_score
+from numdifftools import Hessian
 
 # ----------------------------------------------------------------------
 # Suppress warnings
@@ -19,65 +21,106 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 # ----------------------------------------------------------------------
 # Constitutive Models
 # ----------------------------------------------------------------------
-def neo_hookean(lmbda, G):
-    I1 = lmbda**2 + 2.0/lmbda
-    return 0.5*G*(I1 - 3.0)
-
-def yeoh(lmbda, *mu):
-    I1 = lmbda**2 + 2.0/lmbda
-    return sum(mu[i]*(I1 - 3.0)**(i+1) for i in range(len(mu)))
-
-def mooney_rivlin(lmbda, *c):
-    I1 = lmbda**2 + 2.0/lmbda
-    I2 = (1.0/lmbda**2) + 2.0*lmbda
-    if len(c) == 2:
-        return c[0]*(I1-3.0) + c[1]*(I2-3.0)
-    return sum(ci*(I1-3.0)**(i+1) for i,ci in enumerate(c))
-
-def holzapfel_isotropic(lmbda, mu, k1, k2):
-    """
-    Holzapfel-type isotropic part:
-      W_iso = (mu/2)*(I1-3) + (k1/(2*k2))*(exp(k2*(I1-3)^2) - 1)
-    """
-    I1 = I1_uniaxial(lmbda)
-    term = I1 - 3.0
-    return 0.5*mu*term + (k1/(2.0*k2))*(np.exp(k2*term**2) - 1.0)
-
-def holzapfel_anisotropic(lmbda, mu, k1, k2, alpha_rad, kappa):
-    """
-    Gasser–Ogden–Holzapfel (HGO) single-fiber-family with dispersion:
-      W = (mu/2)*(I1-3) + (k1/(2*k2))*(exp(k2*E_f^2) - 1)
-      E_f = kappa*(I1-3) + (1-3*kappa)*(I4-1)
-    Notes:
-      - alpha_rad is fiber angle (radians) w.r.t. loading axis (0..π/2)
-      - kappa in [0, 1/3] is fiber dispersion (0 = perfectly aligned)
-    """
-    I1 = I1_uniaxial(lmbda)
-    I4 = I4_uniaxial(lmbda, alpha_rad)
-    Ef = kappa*(I1 - 3.0) + (1.0 - 3.0*kappa)*(I4 - 1.0)
-
-    W_iso = 0.5*mu*(I1 - 3.0)
-    W_fib = (k1/(2.0*k2))*(np.exp(k2*Ef**2) - 1.0)
-    return W_iso + W_fib
-
-def linear_elastic(lmbda, E):
-    return E*(lmbda - 1.0)  # stress law
 
 # ---- Invariant helpers (uniaxial, incompressible) --------------------
 def I1_uniaxial(lmbda):
-    # Incompressible uniaxial: λ1=λ, λ2=λ3=λ^{-1/2} → I1 = λ^2 + 2/λ
-    return lmbda**2 + 2.0/lmbda
+    """
+    First invariant for incompressible uniaxial extension:
+    λ1 = λ, λ2 = λ3 = λ^(-1/2)
+    """
+    return lmbda**2 + 2.0 / lmbda
+
+def I2_uniaxial(lmbda):
+    """
+    Second invariant for incompressible uniaxial extension:
+    I2 = λ^2 λ2^2 + λ2^2 λ3^2 + λ3^2 λ1^2
+    With λ2 = λ3 = λ^(-1/2):
+    I2 = 2λ + 1/λ^2
+    """
+    return 2.0 * lmbda + 1.0 / (lmbda**2)
 
 def I4_uniaxial(lmbda, alpha_rad):
     """
-    I4 = a0 · C · a0 for a single fiber family a0 making angle alpha
-    with the loading axis (assumed in the λ–transverse plane).
-    C = diag(λ^2, λ^{-1}, λ^{-1}) for incompressible uniaxial.
+    Fourth invariant for a single fiber family a0 making angle alpha
+    with the loading axis.
+    For incompressible uniaxial: C = diag(λ^2, λ^-1, λ^-1).
     """
-    lam_t = lmbda**(-0.5)              # transverse principal stretch
-    c = np.cos(alpha_rad)
-    s = np.sin(alpha_rad)
-    return (lmbda**2)*c*c + (lam_t**2)*s*s
+    lam_t = lmbda**(-0.5)  # transverse stretch
+    c, s = np.cos(alpha_rad), np.sin(alpha_rad)
+    return (lmbda**2) * (c**2) + (lam_t**2) * (s**2)
+
+# ---- Constitutive models ---------------------------------------------
+def neo_hookean(lmbda, G):
+    I1 = I1_uniaxial(lmbda)
+    return 0.5 * G * (I1 - 3.0)
+
+def yeoh(lmbda, *C):
+    I1 = I1_uniaxial(lmbda)
+    return sum(C[i] * (I1 - 3.0)**(i + 1) for i in range(len(C)))
+
+def mooney_rivlin_2(lmbda, C10, C01):
+    """
+    2-parameter Mooney–Rivlin:
+    W = C10*(I1 - 3) + C01*(I2 - 3)
+    """
+    I1, I2 = I1_uniaxial(lmbda), I2_uniaxial(lmbda)
+    return C10 * (I1 - 3.0) + C01 * (I2 - 3.0)
+
+def mooney_rivlin_3(lmbda, C1, C2, C3):
+    """
+    3-term polynomial Mooney–Rivlin extension
+    (often written as sum of higher powers of I1 - 3).
+    """
+    I1 = I1_uniaxial(lmbda)
+    return C1 * (I1 - 3.0) + C2 * (I1 - 3.0)**2 + C3 * (I1 - 3.0)**3
+
+def mooney_rivlin_5(lmbda, C10, C01, C11, C20, C02):
+    """
+    5-parameter Mooney–Rivlin (commonly used in biomechanics):
+    W = C10*(I1-3) + C01*(I2-3) + C11*(I1-3)(I2-3)
+        + C20*(I1-3)^2 + C02*(I2-3)^2
+    """
+    I1, I2 = I1_uniaxial(lmbda), I2_uniaxial(lmbda)
+    return (C10 * (I1 - 3.0) +
+            C01 * (I2 - 3.0) +
+            C11 * (I1 - 3.0) * (I2 - 3.0) +
+            C20 * (I1 - 3.0)**2 +
+            C02 * (I2 - 3.0)**2)
+
+def holzapfel_isotropic(lmbda, mu, k1, k2):
+    """
+    Holzapfel isotropic part:
+    W = (μ/2)*(I1-3) + (k1/(2k2))*(exp(k2*(I1-3)^2) - 1)
+    """
+    I1 = I1_uniaxial(lmbda)
+    term = I1 - 3.0
+    return 0.5 * mu * term + (k1 / (2.0 * k2)) * (np.exp(k2 * term**2) - 1.0)
+
+def holzapfel_anisotropic(lmbda, mu, k1, k2, alpha_rad, kappa):
+    """
+    Holzapfel–Gasser–Ogden (HGO) model with fiber dispersion:
+    W = (μ/2)*(I1-3) + (k1/(2k2))*(exp(k2*Ef^2) - 1)
+    Ef = κ*(I1-3) + (1-3κ)*(I4-1)
+    """
+    I1 = I1_uniaxial(lmbda)
+    I4 = I4_uniaxial(lmbda, alpha_rad)
+    Ef = kappa * (I1 - 3.0) + (1.0 - 3.0 * kappa) * (I4 - 1.0)
+    W_iso = 0.5 * mu * (I1 - 3.0)
+    W_fib = (k1 / (2.0 * k2)) * (np.exp(k2 * Ef**2) - 1.0)
+    return W_iso + W_fib
+
+def linear_elastic(lmbda, E):
+    """
+    Simple linear elastic stress law:
+    σ = E (λ - 1)
+    """
+    return E * (lmbda - 1.0)
+
+def linear_elastic_free(lmbda, E, sigma0):
+    """
+    Linear elastic with free intercept: σ = E*(λ - 1) + σ0
+    """
+    return E * (lmbda - 1.0) + sigma0
 
 # ----------------------------------------------------------------------
 # Derivative helpers
@@ -93,35 +136,71 @@ def stress_from_W(W_func, lmbda, *params):
 # Model registry
 # ----------------------------------------------------------------------
 MODEL_FUNCS = {
-    "Neo-Hookean": {"W": neo_hookean, "guess": [10.0], "bounds": [(1e-6, 1e4)]},
-    "Yeoh": {"W": yeoh, "guess": [1.0, 0.1], "bounds": [(1e-6, 1e3), (1e-6, 1e3)]},
-    "Mooney-Rivlin-2": {"W": lambda l, c1, c2: mooney_rivlin(l, c1, c2),
-                        "guess": [1.0, 0.1],
-                        "bounds": [(1e-6, 1e3), (1e-6, 1e3)]},
-    "Mooney-Rivlin-3": {"W": lambda l, c1, c2, c3: mooney_rivlin(l, c1, c2, c3),
-                        "guess": [1.0, 0.1, 0.01],
-                        "bounds": [(1e-6, 1e3), (1e-6, 1e3), (1e-6, 1e3)]},
-
-    # New: Holzapfel variants
-    "Holzapfel-Isotropic": {
-        "W": holzapfel_isotropic,
-        "guess": [1.0, 1.0, 1.0],                      # [mu, k1, k2]
-        "bounds": [(1e-6, 1e3), (1e-6, 1e3), (1e-6, 100.0)]
+    "Neo-Hookean": {
+        "W": neo_hookean,
+        "guess": [10.0],
+        "bounds": [(1e-6, 1e4)]
     },
-    "Holzapfel-Anisotropic": {
-        "W": holzapfel_anisotropic,
-        # [mu, k1, k2, alpha_rad, kappa]
-        "guess": [1.0, 1.0, 1.0, np.deg2rad(30.0), 0.05],
+
+    "Yeoh": {
+        "W": yeoh,
+        "guess": [1.0, 0.1],
+        "bounds": [(1e-6, 1e3), (1e-6, 1e3)]
+    },
+
+    "Mooney-Rivlin-2": {
+        "W": mooney_rivlin_2,
+        "guess": [1.0, 0.1],                  # [C10, C01]
+        "bounds": [(1e-6, 1e3), (1e-6, 1e3)]
+    },
+
+    "Mooney-Rivlin-3": {
+        "W": mooney_rivlin_3,
+        "guess": [1.0, 0.1, 0.01],            # [C1, C2, C3]
+        "bounds": [(1e-6, 1e3), (1e-6, 1e3), (1e-6, 1e3)]
+    },
+
+    "Mooney-Rivlin-5": {
+        "W": mooney_rivlin_5,
+        "guess": [1.0, 0.1, 0.05, 0.01, 0.01], # [C10, C01, C11, C20, C02]
         "bounds": [
-            (1e-6, 1e3),      # mu
-            (1e-6, 1e3),      # k1
-            (1e-6, 100.0),    # k2
-            (0.0, np.pi/2),   # alpha in radians
-            (0.0, 1.0/3.0)    # kappa dispersion
+            (1e-6, 1e3),  # C10
+            (1e-6, 1e3),  # C01
+            (1e-6, 1e3),  # C11
+            (1e-6, 1e3),  # C20
+            (1e-6, 1e3)   # C02
         ]
     },
 
-    "Linear-Elastic": {"stress": linear_elastic, "guess": [100.0], "bounds": [(1e-3, 1e5)]}
+    "Holzapfel-Isotropic": {
+        "W": holzapfel_isotropic,
+        "guess": [1.0, 1.0, 1.0],             # [mu, k1, k2]
+        "bounds": [(1e-6, 1e3), (1e-6, 1e3), (1e-6, 100.0)]
+    },
+
+    "Holzapfel-Anisotropic": {
+        "W": holzapfel_anisotropic,
+        "guess": [1.0, 1.0, 1.0, np.deg2rad(30.0), 0.05], # [mu, k1, k2, alpha_rad, kappa]
+        "bounds": [
+            (1e-6, 1e3),    # mu
+            (1e-6, 1e3),    # k1
+            (1e-6, 100.0),  # k2
+            (0.0, np.pi/2), # alpha in radians
+            (0.0, 1.0/3.0)  # kappa dispersion
+        ]
+    },
+
+    "Linear-Elastic": {
+        "stress": linear_elastic,
+        "guess": [100.0],
+        "bounds": [(1e-3, 1e5)]
+    },
+
+    "Linear-Elastic-Free": {
+        "stress": linear_elastic_free,
+        "guess": [100.0, 0],
+        "bounds": [(1e-3, 1e5), (-1e3, 1e3)]
+    }
 }
 
 # ----------------------------------------------------------------------
@@ -129,7 +208,7 @@ MODEL_FUNCS = {
 # ----------------------------------------------------------------------
 def objective(params, model_name, x, y, obj_type="NRMSE"):
     model = MODEL_FUNCS[model_name]
-    if model_name=="Linear-Elastic":
+    if model_name in ["Linear-Elastic", "Linear-Elastic-Free"]:
         stress_model = model["stress"](x,*params)
     else:
         W_func = model["W"]
@@ -150,6 +229,67 @@ def fit_model(model_name, x, y, method="local", obj_type="NRMSE"):
         res = minimize(objective,guess,args=(model_name,x,y,obj_type),
                        method="L-BFGS-B",bounds=bounds)
     return res.x, res.fun
+
+def evaluate_fits(df_region, region="proximal", out_file="fit_metrics.csv"):
+    """
+    Collect fitted parameters and fit quality metrics for all models.
+    Loads from df_region (already has *_params columns).
+    Saves a CSV with one row per specimen per model.
+    """
+    rows = []
+    for idx, row in df_region.iterrows():
+        x, y = row["Stretch"], row["Stress"]
+        if x is None or y is None or len(x) < 3:
+            continue
+        for m in MODEL_FUNCS:
+            params = row.get(f"{m}_params", None)
+            if params is None or isinstance(params, float):
+                continue
+            params = np.atleast_1d(params)
+
+            # Predict stress
+            if m in ["Linear-Elastic", "Linear-Elastic-Free"]:
+                y_pred = MODEL_FUNCS[m]["stress"](x, *params)
+            else:
+                Wf = MODEL_FUNCS[m]["W"]
+                y_pred = np.array([stress_from_W(Wf, l, *params) for l in x])
+
+            residuals = y_pred - y
+            mse = np.mean(residuals**2)
+            nrmse = np.sqrt(mse) / (np.max(y) - np.min(y) + 1e-12)
+            r2 = r2_score(y, y_pred)
+
+            # Confidence intervals (approximate if Hessian is available)
+            ci_lower, ci_upper = [], []
+            try:
+                # Numerical Hessian via finite differences
+                H = Hessian(lambda p: objective(p, m, x, y))(params)
+                cov = np.linalg.inv(H)
+                se = np.sqrt(np.diag(cov))
+                ci_lower = params - 1.96 * se
+                ci_upper = params + 1.96 * se
+            except Exception:
+                ci_lower = [np.nan] * len(params)
+                ci_upper = [np.nan] * len(params)
+
+            rows.append({
+            "Region": region,
+            "SpecimenID": idx,
+            "GroupName": row["GroupName"],
+            "RabbitNumber": row["RabbitNumber"],
+            "Model": m,
+            "Params": params.tolist(),
+            "MSE": mse,
+            "NRMSE": nrmse,
+            "R2": r2,
+            "CI_lower": ci_lower,
+            "CI_upper": ci_upper
+        })
+
+    metrics = pd.DataFrame(rows)
+    metrics.to_csv(out_file, index=False)
+    print(f"📊 Saved fit metrics to {out_file}")
+    return metrics
 
 # ----------------------------------------------------------------------
 # Data Loading
@@ -304,7 +444,7 @@ def plot_stress_stretch_summary(df, control="Control", model_type="Neo-Hookean",
 
         gp=fit_group_average_curve(model_type,gx,gy,fit_range)
         if gp is not None:
-            if model_type=="Linear-Elastic":
+            if model_type in ["Linear-Elastic", "Linear-Elastic-Free"]:
                 gf=MODEL_FUNCS[model_type]["stress"](fine_stretch,*gp)
             else:
                 Wf=MODEL_FUNCS[model_type]["W"]
@@ -315,7 +455,7 @@ def plot_stress_stretch_summary(df, control="Control", model_type="Neo-Hookean",
         ax.errorbar(ctrl_x,ctrl_y,yerr=ctrl_se,fmt="o",color="black",
                     ecolor="black",capsize=3,label="Control data", alpha=exp_alpha)
         if ctrl_params is not None:
-            if model_type=="Linear-Elastic":
+            if model_type in ["Linear-Elastic", "Linear-Elastic-Free"]:
                 cf=MODEL_FUNCS[model_type]["stress"](fine_stretch,*ctrl_params)
             else:
                 Wf=MODEL_FUNCS[model_type]["W"]
@@ -332,7 +472,6 @@ def plot_stress_stretch_summary(df, control="Control", model_type="Neo-Hookean",
     plt.savefig(out_file,dpi=300)
     plt.close(fig)
     print(f"📈 Saved {out_file}")
-
 
 # ----------------------------------------------------------------------
 # Parameter summary
@@ -382,15 +521,19 @@ if __name__=="__main__":
     df=load_material_data("proximal.xlsx","distal.xlsx","Thickness_Normalized.xlsx")
     df=add_severity_duration(df)
     physiological_range=[1.41,1.75]
+    diastolic_range = [1.34, 1.44]
+    systolic_range = [1.70, 1.8]
     regions=["proximal","distal"]
     models = [
         "Linear-Elastic",
+        "Linear-Elastic-Free",
         "Neo-Hookean",
         "Yeoh",
         "Mooney-Rivlin-2",
         "Mooney-Rivlin-3",
+        "Mooney-Rivlin-5",         
         "Holzapfel-Isotropic",
-        "Holzapfel-Anisotropic"   # ← new
+        "Holzapfel-Anisotropic"    
     ]
 
     for region in regions:
@@ -398,6 +541,8 @@ if __name__=="__main__":
         df_region=fit_all_models_for_df(df,region=region,cache_file=cache_file)
         summarize_all_parameters(df_region,region=region,
                                  out_file=os.path.join(outdir,f"param_summary_{region}.csv"))
+        evaluate_fits(df_region, region=region,
+                    out_file=os.path.join(outdir, f"fit_metrics_{region}.csv"))
 
         for m in models:
             # Full-range fit/plot
@@ -407,3 +552,9 @@ if __name__=="__main__":
             plot_stress_stretch_summary(df_region,model_type=m,region=region,
                                         fit_range=physiological_range,
                                         out_file=os.path.join(outdir,f"plot_{m}_{region}_phys.png"))
+            plot_stress_stretch_summary(df_region,model_type=m,region=region,
+                                        fit_range=diastolic_range,
+                                        out_file=os.path.join(outdir,f"plot_{m}_{region}_diastol.png"))
+            plot_stress_stretch_summary(df_region,model_type=m,region=region,
+                                        fit_range=systolic_range,
+                                        out_file=os.path.join(outdir,f"plot_{m}_{region}_systol.png"))
