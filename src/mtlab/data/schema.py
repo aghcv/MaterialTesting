@@ -1,4 +1,21 @@
 # mtlab/data/schema.py
+import os
+
+BASE_OUT = "outputs"
+
+PATHS = {
+    "data": os.path.join(BASE_OUT, "data"),
+    "derived": os.path.join(BASE_OUT, "data", "derived"),
+    "strain_energy": os.path.join(BASE_OUT, "data", "strain-energy"),
+    "model": os.path.join(BASE_OUT, "model", "fits"),
+    "verify": os.path.join(BASE_OUT, "verify"),
+    "report": os.path.join(BASE_OUT, "report"),
+}
+
+# optional helpers
+def ensure_dirs():
+    for p in PATHS.values():
+        os.makedirs(p, exist_ok=True)
 
 # RGB tuples in [0,1] (reused from your existing palette)
 GROUP_COLORS = {

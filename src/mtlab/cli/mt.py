@@ -6,43 +6,49 @@ from ..analysis.strain_energy import compute_strain_energy
 from ..analysis.constitutive_summary import specimen_level_param_table, per_group_stats, expand_param_column
 from ..fitting.core import fit_curve
 from ..verification.validate import kfold_verify, trustworthy_models
+from ..data.schema import PATHS
 
 def main():
     p = argparse.ArgumentParser(prog="mt")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     p_fit = sub.add_parser("fit", help="fit a model per specimen")
-    p_fit.add_argument("--data", required=True)
+    p_fit.add_argument("--data", required=True)   # stays required (you always need data in)
     p_fit.add_argument("--model", required=True)
-    p_fit.add_argument("--out", required=True)
+    p_fit.add_argument("--out", default=PATHS["model"])
+
 
     p_sum = sub.add_parser("summarize", help="summarize fitted parameters")
-    p_sum.add_argument("--fits", required=True)
-    p_sum.add_argument("--out", required=True)
+    p_sum.add_argument("--fits", default=PATHS["fits"])
+    p_sum.add_argument("--out", default=PATHS["model"])
 
     p_se = sub.add_parser("strain-energy", help="compute strain energy per specimen")
     p_se.add_argument("--data", required=True)
-    p_se.add_argument("--out", required=True)
+    p_se.add_argument("--out", default=PATHS["strain"])
+
 
     p_verify = sub.add_parser("verify", help="k-fold verification of models")
     p_verify.add_argument("--data", required=True)
     p_verify.add_argument("--models", default="all", help="comma-separated or 'all'")
     p_verify.add_argument("--kfold", type=int, default=5)
-    p_verify.add_argument("--out", required=True)
+    p_verify.add_argument("--out", default=PATHS["verify"])
+
 
     p_ing = sub.add_parser("ingest", help="ingest proximal/distal/thickness xlsx into standardized CSVs")
     p_ing.add_argument("--proximal", required=True)
     p_ing.add_argument("--distal", required=True)
     p_ing.add_argument("--thickness", required=True)
-    p_ing.add_argument("--out", required=True)
+    p_ing.add_argument("--out", default=PATHS["data"])
+
 
     p_an = sub.add_parser("analyze", help="generate analysis plots and reports")
-    p_an.add_argument("--specimens", required=True, help="path to specimens_master.csv")
-    p_an.add_argument("--fits", required=True, help="path to fits.csv (model results)")
-    p_an.add_argument("--strain", required=True, help="path to strain_energy_stats.csv")
-    p_an.add_argument("--metrics", required=True, help="path to metrics.csv from verify")
-    p_an.add_argument("--params", required=True, help="path to specimen_params_long.csv")
-    p_an.add_argument("--out", required=True)
+    p_an.add_argument("--specimens", default=PATHS["specimens"])
+    p_an.add_argument("--fits", default=PATHS["fits"])
+    p_an.add_argument("--strain", default=PATHS["strain"])
+    p_an.add_argument("--metrics", default=PATHS["metrics"])
+    p_an.add_argument("--params", default=PATHS["params"])
+    p_an.add_argument("--out", default=PATHS["report"])
+
 
     args = p.parse_args()
 
