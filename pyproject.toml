@@ -1,0 +1,31 @@
+[project]
+name = "mtlab"
+version = "0.1.0"
+description = "Material testing analysis and model verification for arterial tissue"
+authors = [{name="Arash G.", email="arash.ghorbannia@duke.edu"}]
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "pandas",
+    "matplotlib",
+    "scipy",
+    "statsmodels",
+    "scikit-learn",
+    "openpyxl",
+    "numdifftools"
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["mtlab*"]
+exclude = ["tmp*", "catboost_info*"]
+
+[project.scripts]
+mt = "mtlab.cli.mt:main"
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"

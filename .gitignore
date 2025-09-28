@@ -1,5 +1,14 @@
 ml_out/
 mt_out/
+inputs/
+outputs/
 distal.xlsx
 proximal.xlsx
 Thickness_Normalized.xlsx
+catboost_info/
+tmp/
+build/
+dist/
+*.egg-info/
+__pycache__/
+.pytest_cache/
