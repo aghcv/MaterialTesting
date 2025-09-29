@@ -11,30 +11,23 @@ from .schema import GROUP_COLORS, GROUP_LABELS, GROUP_ORDER, MASTER_COLUMNS
 # CSV loader (unit-agnostic)
 # ---------------------------
 def load_material_data(csv_path: str) -> pd.DataFrame:
-    """
-    Load a master CSV (specimen-level) that contains at least:
-      - Stretch (list-like)
-      - Stress  (list-like, unit-agnostic)
-    Other recommended columns: SpecimenID, Region, GroupName, RabbitNumber, etc.
-    """
     df = pd.read_csv(csv_path)
-    # Coerce list-like strings to Python lists
+    # Coerce list-like strings to numpy arrays
     for col in ["Stretch", "Stress"]:
         if col in df.columns and df[col].dtype == object:
-            df[col] = df[col].apply(_maybe_parse_list)
+            df[col] = df[col].apply(_to_numpy_array)
     return df
 
-
-def _maybe_parse_list(x):
+def _to_numpy_array(x):
+    import numpy as np, ast
     if isinstance(x, str):
-        s = x.strip()
-        if s.startswith("[") and s.endswith("]"):
-            try:
-                import ast
-                return list(ast.literal_eval(s))
-            except Exception:
-                return x
-    return x
+        try:
+            return np.array(ast.literal_eval(x), dtype=float)
+        except Exception:
+            return np.array([], dtype=float)
+    if isinstance(x, list):
+        return np.array(x, dtype=float)
+    return np.array(x, dtype=float)
 
 # ---------------------------
 # XLSX ingestion pipeline

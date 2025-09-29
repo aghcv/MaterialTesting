@@ -17,6 +17,35 @@ def ensure_dirs():
     for p in PATHS.values():
         os.makedirs(p, exist_ok=True)
 
+
+PARAM_COLUMNS = [f"p{i}" for i in range(1, 7)]  # fixed width for all models
+
+# Map model → which param goes into which pX
+MODEL_PARAM_MAP = {
+    # Simple models
+    "neo": ["G"],
+    "linear": ["E"],  # if you keep linear elastic fits
+
+    # Mooney-Rivlin & Yeoh families
+    "mr2": ["C10", "C01"],
+    "mr3": ["C1", "C2", "C3"],  # matches your W definition
+    "mr5": ["C10", "C01", "C11", "C20", "C02"],
+    "yeoh2": ["C10", "C20"],
+    "yeoh3": ["C10", "C20", "C30"],
+
+    # Ogden reduced model
+    "ogden1": ["mu", "alpha"],
+
+    # Holzapfel variants
+    "holz_iso": ["mu", "k1", "k2"],               # isotropic
+    "holz_aniso4": ["mu", "k1", "k2", "theta"],   # 1 fiber family, 1 angle
+    "holz_goh5": ["mu", "k1", "k2", "kappa", "theta"],  # Goh variant with dispersion
+
+    # Fung model
+    "fung": ["C", "b1", "b2", "b3"],  # common 4-parameter Fung form
+}
+
+
 # RGB tuples in [0,1] (reused from your existing palette)
 GROUP_COLORS = {
     'Control': (0.0, 0.0, 0.0),

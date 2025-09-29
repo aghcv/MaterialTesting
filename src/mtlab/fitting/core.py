@@ -3,6 +3,7 @@ import numpy as np
 from dataclasses import dataclass
 from typing import Dict, Sequence
 from scipy.optimize import minimize
+from sklearn.metrics import mean_squared_error, r2_score
 from .utils import rmse, nrmse
 from ..models.core import get_model, stress_fn
 
@@ -12,6 +13,8 @@ class FitResult:
     params: Dict[str, float]
     rmse: float
     nrmse: float
+    mse: float = None
+    r2: float = None
 
 def fit_curve(stretch, stress, model: str, x0: Sequence[float]=None) -> FitResult:
     stretch = np.asarray(stretch, dtype=float).reshape(-1)
@@ -37,9 +40,16 @@ def fit_curve(stretch, stress, model: str, x0: Sequence[float]=None) -> FitResul
     res = minimize(loss, x0, bounds=bounds, method="L-BFGS-B")
     theta = res.x
     yhat = fn(stretch, *theta)
+
+    # --- Add metrics ---
+    mse_val = mean_squared_error(stress, yhat)
+    r2_val  = r2_score(stress, yhat)
+
     return FitResult(
         model=model,
         params={k: float(v) for k, v in zip(pnames, theta)},
         rmse=float(rmse(stress, yhat)),
         nrmse=float(nrmse(stress, yhat)),
+        mse=float(mse_val),
+        r2=float(r2_val),
     )

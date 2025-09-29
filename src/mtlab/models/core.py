@@ -18,11 +18,12 @@ def I2_uniaxial(lmbda):
     l = _arr(lmbda)
     return (1.0 / l**2) + 2.0 * l
 
-def I4_uniaxial(lmbda, alpha_rad):
-    l = _arr(lmbda)
-    ca2 = np.cos(alpha_rad) ** 2
-    sa2 = np.sin(alpha_rad) ** 2
-    return l**2 * ca2 + (1.0 / l) * sa2
+def I4_uniaxial(lmbda, theta_rad):
+    """I4 for a fiber family at angle theta (radians) to the loading axis (in-plane)."""
+    l = np.asarray(lmbda, dtype=float)
+    c2 = np.cos(theta_rad)**2
+    s2 = np.sin(theta_rad)**2
+    return (l**2) * c2 + (l**-1) * s2
 
 # -----------------------------------
 # Strain-energy density models: W(λ)
@@ -66,10 +67,43 @@ def holzapfel_isotropic_W(lmbda, mu, k1, k2):
     # numeric guard: avoid overflow in exp
     return 0.5 * mu * t + (k1 / (2.0 * k2)) * (safe_exp(k2 * t**2) - 1.0)
 
+def holzapfel_anisotropic_W(lmbda, mu, k1, k2, theta_rad):
+    """
+    W = 0.5*mu*(I1-3) + 2 * [ k1/(2*k2) * (exp(k2*(I4-1)^2) - 1) ]
+    - '2 * [...]' accounts for ±theta symmetric families with same parameters.
+    - theta_rad is in radians.
+    """
+    I1 = I1_uniaxial(lmbda)
+    I4 = I4_uniaxial(lmbda, theta_rad)
+    iso = 0.5 * mu * (I1 - 3.0)
+    fib = (k1 / (2.0 * k2)) * (safe_exp(k2 * (I4 - 1.0)**2) - 1.0)
+    return iso + 2.0 * fib
+
+def holzapfel_GOH_W(lmbda, mu, k1, k2, theta_rad, kappa):
+    """
+    W = 0.5*mu*(I1-3) + 2 * [ k1/(2*k2) * (exp(k2 * Ef^2) - 1) ]
+    Ef = kappa*(I1-3) + (1-3*kappa)*(I4-1)
+    - Two symmetric families at ±theta → factor 2.
+    - theta_rad in radians, kappa in [0, 1/3).
+    """
+    I1 = I1_uniaxial(lmbda)
+    I4 = I4_uniaxial(lmbda, theta_rad)
+    Ef = kappa * (I1 - 3.0) + (1.0 - 3.0*kappa) * (I4 - 1.0)
+    iso = 0.5 * mu * (I1 - 3.0)
+    fib = (k1 / (2.0 * k2)) * (safe_exp(k2 * (Ef**2)) - 1.0)
+    return iso + 2.0 * fib
+
+
 def reduced_ogden_W(lmbda, mu, alpha=2.0):
     l = _arr(lmbda)
     # W = (2μ/α^2)(λ^α + 2 λ^{-α/2} - 3)
     return (2.0 * mu / (alpha**2)) * (l**alpha + 2.0 * l**(-alpha / 2.0) - 3.0)
+
+def fung_exponential_W(lmbda, c):
+    I1 = I1_uniaxial(lmbda)
+    t = (I1 - 3.0)
+    return 0.5 * c * (safe_exp(t) - 1.0)
+
 
 def safe_exp(x, cap: float = 50.0):
     """Numerically safe exp: clip argument to avoid overflow."""
@@ -114,6 +148,24 @@ MODEL_REGISTRY: Dict[str, Dict] = {
     "holz_iso": {"W": holzapfel_isotropic_W,"params": ["mu","k1","k2"],                "bounds": [(1e-9,1e9),(1e-9,1e9),(1e-6,2.0)]},
     "ogden1":   {"W": reduced_ogden_W,     "params": ["mu","alpha"],                   "bounds": [(1e-9,1e9),(0.2,10.0)]},
 }
+
+MODEL_REGISTRY.update({
+    "fung": {
+        "params": ["c"],
+        "bounds": [(1e-9, 1e4)],
+        "W": fung_exponential_W,
+    },
+    "holz_aniso4": {  # θ as a fitted parameter (radians)
+        "params": ["mu", "k1", "k2", "theta"],
+        "bounds": [(1e-9, 1e3), (1e-9, 1e4), (1e-6, 50.0), (0.0, np.pi/2)],
+        "W": holzapfel_anisotropic_W,
+    },
+    "holz_goh5": {   # includes dispersion kappa
+        "params": ["mu", "k1", "k2", "theta", "kappa"],
+        "bounds": [(1e-9, 1e3), (1e-9, 1e4), (1e-6, 50.0), (0.0, np.pi/2), (0.0, 0.3333)],
+        "W": holzapfel_GOH_W,
+    },
+})
 
 def get_model(name: str) -> Dict:
     key = name.lower()
