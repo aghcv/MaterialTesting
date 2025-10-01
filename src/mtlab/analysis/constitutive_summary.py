@@ -151,43 +151,30 @@ def enrich_master_with_specimens(
 def summarize_coupling_results(input_dir, output_file="constitutive_coupling_reliability.csv"):
     """
     Summarize SE-parameter coupling bootstraps across all models, regions, and ranges.
-
-    Parameters
-    ----------
-    input_dir : str or Path
-        Directory containing `se_param_coupling_boot_<region>_<range>_<model>.csv`.
-    output_file : str or Path
-        Path to save the summarized reliability table.
     """
 
     input_dir = Path(input_dir)
     rows = []
 
     for file in input_dir.glob("se_param_coupling_boot_*.csv"):
-        # Parse file name: se_param_coupling_boot_<region>_<range>_<model>.csv
-        parts = file.stem.split("_")
-        try:
-            region, rng, model = parts[4], parts[5], "_".join(parts[6:])
-        except Exception:
-            print(f"[WARN] Skipping {file} (unexpected name format)")
-            continue
-
         df = pd.read_csv(file)
 
-        # Expect columns: term, support, sign_consistency, beta_median, beta_lo, beta_hi
         if df.empty:
             continue
 
-        # Define a reliability score (you can adjust weighting scheme)
-        df["reliability"] = (df["support"].fillna(0)/100) * (df["sign_consistency"].fillna(0)/100)
+        # Normalize column names (strip + lowercase)
+        df.columns = [c.strip().lower() for c in df.columns]
 
-        # Pick top parameter for this model
+        # Reliability score
+        df["reliability"] = (df["support"].fillna(0) / 100) * (df["sign_consistency"].fillna(0) / 100)
+
+        # Pick best row
         best = df.sort_values("reliability", ascending=False).iloc[0]
 
         rows.append(dict(
-            Region=region,
-            Range=rng,
-            Model=model,
+            region=best["region"],
+            range=best["range"],
+            model=best["model"],
             BestParam=best["term"],
             Reliability=best["reliability"],
             Support=best["support"],
@@ -200,13 +187,23 @@ def summarize_coupling_results(input_dir, output_file="constitutive_coupling_rel
 
     summary = pd.DataFrame(rows)
 
-    # For each region & range, rank models by reliability
-    summary["Rank"] = summary.groupby(["Region", "Range"])["Reliability"].rank(ascending=False, method="first")
+    if summary.empty:
+        print("[WARN] No coupling results found.")
+        return summary
 
-    # Save to disk
+    # Normalize summary column names too
+    summary.columns = [c.strip().lower() for c in summary.columns]
+
+    # Rank models by reliability per region × range
+    summary["rank"] = summary.groupby(["region", "range"])["reliability"].rank(
+        ascending=False, method="first"
+    )
+
     outpath = Path(input_dir) / output_file
     summary.to_csv(outpath, index=False)
     print(f"[INFO] Wrote summarized coupling results to {outpath}")
 
     return summary
+
+
 
