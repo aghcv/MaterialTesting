@@ -1,7 +1,8 @@
+import os
 import pandas as pd
 from pathlib import Path
 from ..models.core import MODEL_REGISTRY
-from ..data.schema import PARAM_COLUMNS, MODEL_PARAM_MAP
+from ..data.schema import PARAM_COLUMNS, MODEL_PARAM_MAP, PATHS
 
 def expand_param_column(fits_df: pd.DataFrame, params_col: str="Params") -> pd.DataFrame:
     expanded = fits_df[params_col].apply(lambda d: pd.Series(d))
@@ -148,7 +149,7 @@ def enrich_master_with_specimens(
 
     return merged
 
-def summarize_coupling_results(input_dir, output_file="constitutive_coupling_reliability.csv"):
+def summarize_coupling_results(input_dir):
     """
     Summarize SE-parameter coupling bootstraps across all models, regions, and ranges.
     """
@@ -198,8 +199,7 @@ def summarize_coupling_results(input_dir, output_file="constitutive_coupling_rel
     summary["rank"] = summary.groupby(["region", "range"])["reliability"].rank(
         ascending=False, method="first"
     )
-
-    outpath = Path(input_dir) / output_file
+    outpath = os.path.join(PATHS["model"],"constitutive_coupling_reliability.csv")
     summary.to_csv(outpath, index=False)
     print(f"[INFO] Wrote summarized coupling results to {outpath}")
 

@@ -13,6 +13,15 @@ from ..data.schema import PATHS, ensure_dirs, STRAIN_ENERGY_RANGES
 def main():
     p = argparse.ArgumentParser(prog="mt")
     sub = p.add_subparsers(dest="cmd", required=True)
+    
+    # ----------------------------------------------------------------------
+    # Ingest
+    # ----------------------------------------------------------------------
+    p_ing = sub.add_parser("ingest", help="ingest proximal/distal/thickness xlsx into standardized CSVs")
+    p_ing.add_argument("--proximal", required=True)
+    p_ing.add_argument("--distal", required=True)
+    p_ing.add_argument("--thickness", required=True)
+    p_ing.add_argument("--out", default=PATHS["data"])
 
     # ----------------------------------------------------------------------
     # Fit
@@ -48,15 +57,6 @@ def main():
     p_verify.add_argument("--models", default="all", help="comma-separated or 'all'")
     p_verify.add_argument("--kfold", type=int, default=5)
     p_verify.add_argument("--out", default=PATHS["verify"])
-
-    # ----------------------------------------------------------------------
-    # Ingest
-    # ----------------------------------------------------------------------
-    p_ing = sub.add_parser("ingest", help="ingest proximal/distal/thickness xlsx into standardized CSVs")
-    p_ing.add_argument("--proximal", required=True)
-    p_ing.add_argument("--distal", required=True)
-    p_ing.add_argument("--thickness", required=True)
-    p_ing.add_argument("--out", default=PATHS["data"])
 
     # ----------------------------------------------------------------------
     # Analyze
@@ -217,7 +217,8 @@ def main():
             print(f"Statistical analyses written to {args.out}")
         except Exception as e:
             print(f"[WARN] Statistical analysis skipped due to error: {e}")
-        summarize_coupling_results(input_dir=args.out, output_dir=args.out)
+        
+        summarize_coupling_results(input_dir=args.out)
 
     elif args.cmd == "strain-energy":
         df = load_material_data(args.specimens)
@@ -248,10 +249,18 @@ def main():
             summarize_model_metrics,
             plot_model_params,
             overlay_model_fits,
+            plot_stress_stretch_summary,
             # plot_fit_metrics
         )
 
         specimens = pd.read_csv(args.specimens)
+        # --- Normalize control naming ---
+        if "GroupName" in specimens.columns:
+            specimens["GroupName"] = (
+                specimens["GroupName"]
+                .astype(str)
+                .apply(lambda x: "Control" if str(x).strip().lower().startswith("control") else x)
+            )
         fits = pd.read_csv(args.fits)
         strain = pd.read_csv(args.strain)
         metrics = pd.read_csv(args.metrics)
@@ -259,6 +268,11 @@ def main():
 
         # Run the plots
         plot_stress_stretch(specimens, args.out)
+        plot_stress_stretch_summary(
+            specimens,
+            args.out,
+            model_name="holz_iso",
+            )
         overlay_model_fits(specimens, fits, args.out)
         plot_strain_energy(strain, args.out)
         # plot_fit_metrics(metrics, args.out)

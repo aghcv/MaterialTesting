@@ -93,7 +93,6 @@ def holzapfel_GOH_W(lmbda, mu, k1, k2, theta_rad, kappa):
     fib = (k1 / (2.0 * k2)) * (safe_exp(k2 * (Ef**2)) - 1.0)
     return iso + 2.0 * fib
 
-
 def reduced_ogden_W(lmbda, mu, alpha=2.0):
     l = _arr(lmbda)
     # W = (2μ/α^2)(λ^α + 2 λ^{-α/2} - 3)
@@ -103,7 +102,6 @@ def fung_exponential_W(lmbda, c):
     I1 = I1_uniaxial(lmbda)
     t = (I1 - 3.0)
     return 0.5 * c * (safe_exp(t) - 1.0)
-
 
 def safe_exp(x, cap: float = 50.0):
     """Numerically safe exp: clip argument to avoid overflow."""
