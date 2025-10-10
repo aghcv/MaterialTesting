@@ -62,16 +62,17 @@ GROUP_COLORS = {
 
 # Human-friendly labels (edit these to your preferred wording, e.g., “Mild-Short-CoA”)
 GROUP_LABELS = {
+    
+    'RdCoA5': 'Short-Mild',   # e.g., "Mild-Short-CoA"
+    'RdCoA10': 'Short-Interm.',
+    'RdCoA20': 'Short-Severe',
+    'dCoA5': 'Long-Mild',
+    'dCoA10': 'Long-Interm.',
+    'dCoA20': 'Long-Severe',
+    'CoA5': 'Prolong-Mild',
+    'CoA10': 'Prolong-Interm.',
+    'CoA20': 'Prolong-Severe',
     'Control': 'Control',
-    'RdCoA5': 'Short-Mild-CoA',   # e.g., "Mild-Short-CoA"
-    'RdCoA10': 'Short-Intermediate-CoA',
-    'RdCoA20': 'Short-Severe-CoA',
-    'dCoA5': 'Long-Mild-CoA',
-    'dCoA10': 'Long-Intermediate-CoA',
-    'dCoA20': 'Long-Severe-CoA',
-    'CoA5': 'Prolong-Mild-CoA',
-    'CoA10': 'Prolong-Intermediate-CoA',
-    'CoA20': 'Prolong-Severe-CoA',
 }
 
 GROUP_ORDER = ['Control','RdCoA5','RdCoA10','RdCoA20','dCoA5','dCoA10','dCoA20','CoA5','CoA10','CoA20']

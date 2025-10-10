@@ -250,6 +250,7 @@ def main():
             plot_model_params,
             overlay_model_fits,
             plot_stress_stretch_summary,
+            tabulate_fitted_moduli,
             # plot_fit_metrics
         )
 
@@ -271,9 +272,10 @@ def main():
         plot_stress_stretch_summary(
             specimens,
             args.out,
-            model_name="holz_iso",
+            model_name="linear_free",
             )
+        tabulate_fitted_moduli(specimens, args.out, model_list=["linear_free", "yeoh2", "yeoh3"])
         overlay_model_fits(specimens, fits, args.out)
         plot_strain_energy(strain, args.out)
         # plot_fit_metrics(metrics, args.out)
-        plot_model_params(params, args.out, model="holz_iso")
+        plot_model_params(params, args.out, model="linear_free")

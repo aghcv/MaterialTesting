@@ -107,6 +107,20 @@ def safe_exp(x, cap: float = 50.0):
     """Numerically safe exp: clip argument to avoid overflow."""
     return np.exp(np.clip(x, -cap, cap))
 
+def linear_elastic_W(lmbda, E):
+    l = _arr(lmbda)
+    return 0.5 * E * (l - 1.0)**2
+
+def linear_free_W(lmbda, E, eps0):
+    """
+    Linear elastic strain energy with offset.
+    W = 0.5 * E * (λ - 1)^2 + eps0 * (λ - 1)
+    -> σ = E*(λ - 1) + eps0
+    Allows linear fit not constrained to pass through origin.
+    """
+    l = _arr(lmbda)
+    return 0.5 * E * (l - 1.0)**2 + eps0 * (l - 1.0)
+
 # -----------------------------------
 # Generic stress builder from W
 # -----------------------------------
@@ -162,6 +176,19 @@ MODEL_REGISTRY.update({
         "params": ["mu", "k1", "k2", "theta", "kappa"],
         "bounds": [(1e-9, 1e3), (1e-9, 1e4), (1e-6, 50.0), (0.0, np.pi/2), (0.0, 0.3333)],
         "W": holzapfel_GOH_W,
+    },
+})
+
+MODEL_REGISTRY.update({
+    "linear": {
+        "W": linear_elastic_W,
+        "params": ["E"],
+        "bounds": [(1e-9, 1e9)],
+    },
+    "linear_free": {
+        "W": linear_free_W,
+        "params": ["E", "eps0"],
+        "bounds": [(1e-9, 1e9), (-1e4, 1e4)],
     },
 })
 
